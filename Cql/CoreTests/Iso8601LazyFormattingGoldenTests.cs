@@ -26,6 +26,14 @@ namespace CoreTests;
 /// inconsistent (a Day-precision instance rendering as just the year, say). That is intentional: this file
 /// pins what the eager implementation DID, not what it arguably should have done. Changing that behaviour
 /// is a separate, deliberate decision.
+/// <para>
+/// Two rows have since been corrected rather than re-captured: the strict February rows
+/// (<c>DS|2024|2|29|True</c> and <c>DS|2023|2|28|True</c>) recorded <c>THROW:ArgumentException</c> for two
+/// dates that plainly exist. <see cref="DateIso8601"/>'s strict validation chained its February day checks
+/// as <c>else if</c> arms of the same chain that assigned <c>Precision</c>, so every legal February date fell
+/// through with <c>Precision</c> still <c>Unknown</c> and was rejected by the guard below it. Those rows
+/// pinned that defect as an invariant; they now pin the dates themselves.
+/// </para>
 /// </remarks>
 [TestClass]
 [TestCategory("UnitTest")]
@@ -423,9 +431,9 @@ DS|2024|3||True|2024-03
 DS|2024|3|15|False|2024-03-15
 DS|2024|3|15|True|2024-03-15
 DS|2024|2|29|False|2024-02-29
-DS|2024|2|29|True|THROW:ArgumentException
+DS|2024|2|29|True|2024-02-29
 DS|2023|2|28|False|2023-02-28
-DS|2023|2|28|True|THROW:ArgumentException
+DS|2023|2|28|True|2023-02-28
 DDTO|Unknown|False|2024
 DDTO|Unknown|True|2024
 DDTO|Year|False|2024

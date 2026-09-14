@@ -1324,6 +1324,136 @@ namespace Hl7.Cql.CqlToElm.Test
 
         #endregion
 
+        #region Date/time component ranges
+
+        // A date, date/time or time literal whose components are individually well-formed but
+        // out of range does not denote any point in time, so it is a translation error rather
+        // than a value. Without this the components were carried into ELM unchecked and the
+        // consumer received a plausible but different value than the one that was written.
+
+        [TestMethod]
+        public void Time_Literal_Hour_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library TimeHourRange version '1.0.0'
+
+                define private Time_Literal: @T24:59:59.999
+                """, "Invalid time literal '24:59:59.999'.*");
+        }
+
+        [TestMethod]
+        public void Time_Literal_Minute_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library TimeMinuteRange version '1.0.0'
+
+                define private Time_Literal: @T23:60:59.999
+                """, "Invalid time literal '23:60:59.999'.*");
+        }
+
+        [TestMethod]
+        public void Time_Literal_Second_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library TimeSecondRange version '1.0.0'
+
+                define private Time_Literal: @T23:59:60.999
+                """, "Invalid time literal '23:59:60.999'.*");
+        }
+
+        [TestMethod]
+        public void Time_Literal_Upper_Bounds_Are_Accepted()
+        {
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library TimeUpperBound version '1.0.0'
+
+                define private Time_Literal: @T23:59:59.999
+                """);
+            var time = (Time)library.statements[0].expression;
+            Assert.AreEqual("23", ((Literal)time.hour).value);
+            Assert.AreEqual("59", ((Literal)time.minute!).value);
+            Assert.AreEqual("59", ((Literal)time.second!).value);
+            Assert.AreEqual("999", ((Literal)time.millisecond!).value);
+        }
+
+        [TestMethod]
+        public void Date_Literal_Month_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library DateMonthRange version '1.0.0'
+
+                define private Date_Literal: @2023-13-01
+                """, "Invalid date literal '2023-13-01'.*");
+        }
+
+        [TestMethod]
+        public void Date_Literal_Day_Out_Of_Range_For_Month()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library DateDayRange version '1.0.0'
+
+                define private Date_Literal: @2023-02-30
+                """, "Invalid date literal '2023-02-30'.*");
+        }
+
+        [TestMethod]
+        public void Date_Literal_February_Is_Accepted()
+        {
+            // February takes a different validation path than the other months; make sure a
+            // legal February date is still translated, in a leap year and outside one.
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library DateFebruary version '1.0.0'
+
+                define private Date_Literal: @2023-02-15
+                """);
+            var date = (Date)library.statements[0].expression;
+            Assert.AreEqual("2", ((Literal)date.month!).value);
+            Assert.AreEqual("15", ((Literal)date.day!).value);
+
+            CreateCqlToolkit().MakeLibrary("""
+                library DateLeapDay version '1.0.0'
+
+                define private Date_Literal: @2024-02-29
+                """);
+        }
+
+        [TestMethod]
+        public void DateTime_Literal_Hour_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library DateTimeHourRange version '1.0.0'
+
+                define private DateTime_Literal: @2023-01-02T24:00:00.000
+                """, "Invalid date/time literal '2023-01-02T24:00:00.000'.*");
+        }
+
+        [TestMethod]
+        public void DateTime_Literal_Month_Out_Of_Range()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library DateTimeMonthRange version '1.0.0'
+
+                define private DateTime_Literal: @2023-13-02T01:00:00.000
+                """, "Invalid date/time literal '2023-13-02T01:00:00.000'.*");
+        }
+
+        [TestMethod]
+        public void DateTime_Literal_Upper_Bounds_Are_Accepted()
+        {
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library DateTimeUpperBound version '1.0.0'
+
+                define private DateTime_Literal: @2023-12-31T23:59:59.999+14:00
+                """);
+            var dateTime = (DateTime)library.statements[0].expression;
+            Assert.AreEqual("23", ((Literal)dateTime.hour!).value);
+            Assert.AreEqual("59", ((Literal)dateTime.minute!).value);
+            Assert.AreEqual("59", ((Literal)dateTime.second!).value);
+            Assert.AreEqual("999", ((Literal)dateTime.millisecond!).value);
+        }
+
+        #endregion
+
         #region Quantity
 
         [TestMethod]

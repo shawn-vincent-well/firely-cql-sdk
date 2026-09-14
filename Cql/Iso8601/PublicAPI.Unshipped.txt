@@ -1,1 +1,4 @@
 #nullable enable
+static Hl7.Cql.Iso8601.DateIso8601.TryParse(string! stringValue, bool strict, out Hl7.Cql.Iso8601.DateIso8601? dateValue) -> bool
+static Hl7.Cql.Iso8601.DateTimeIso8601.TryParse(string! stringValue, bool strict, out Hl7.Cql.Iso8601.DateTimeIso8601? dateTimeValue) -> bool
+static Hl7.Cql.Iso8601.TimeIso8601.TryParse(string! stringValue, bool strict, out Hl7.Cql.Iso8601.TimeIso8601? timeValue) -> bool

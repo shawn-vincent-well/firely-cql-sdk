@@ -179,7 +179,7 @@ namespace Hl7.Cql.Iso8601
                         {
                             if (day > 28 && (year % 4) != 0)
                                 throw new ArgumentException("Only leap years have 29 days in February", nameof(day));
-                            else if (day > 30)
+                            else if (day > 29)
                                 throw new ArgumentException("February only has 29 days during leap years", nameof(day));
                         }
                         if (hour.HasValue)
@@ -344,8 +344,26 @@ namespace Hl7.Cql.Iso8601
         /// <param name="stringValue">The string to parse</param>
         /// <param name="dateTimeValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
         /// <returns><see langword ="true"/> if the string is a valid ISO 8601 date and parsing is successful; otherwise <see langword ="false"/>.</returns>
+        /// <remarks>
+        /// This overload does not range-check the parsed components. Use the
+        /// <see cref="TryParse(string, bool, out DateTimeIso8601?)"/> overload with <c>strict</c> set to
+        /// <see langword="true"/> to reject a component that is well-formed but out of range.
+        /// </remarks>
+        public static bool TryParse(string stringValue, out DateTimeIso8601? dateTimeValue) =>
+            TryParse(stringValue, strict: false, out dateTimeValue);
 
-        public static bool TryParse(string stringValue, out DateTimeIso8601? dateTimeValue)
+        /// <summary>
+        /// Tries to parse <paramref name="stringValue"/> as an ISO 8601 date time, optionally requiring every
+        /// component to fall inside the range ISO 8601 allows for it.
+        /// </summary>
+        /// <param name="stringValue">The string to parse</param>
+        /// <param name="strict">If <see langword ="true"/>, a string whose components are well-formed but out of
+        /// range - a month outside [1,12], a day that does not exist in the month and year given, an hour above 23,
+        /// a minute or second above 59, a millisecond above 999, or an offset hour outside [-14,14] - is rejected
+        /// instead of being carried into the result.</param>
+        /// <param name="dateTimeValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
+        /// <returns><see langword ="true"/> if the string is a valid ISO 8601 date and parsing is successful; otherwise <see langword ="false"/>.</returns>
+        public static bool TryParse(string stringValue, bool strict, out DateTimeIso8601? dateTimeValue)
         {
             var parts = Expression.Match(stringValue);
             if (!parts.Success || parts.Captures.Count != 1 || parts.Captures[0].Length != stringValue.Length)
@@ -437,7 +455,18 @@ namespace Hl7.Cql.Iso8601
                 }
             }
 
-            dateTimeValue = new DateTimeIso8601(stringValue, year!.Value, month, day, hour, minute, second, ms, osHour, osMinute);
+            try
+            {
+                dateTimeValue = new DateTimeIso8601(stringValue, year!.Value, month, day, hour, minute, second, ms, osHour, osMinute, strict);
+            }
+            catch (ArgumentException)
+            {
+                // A component the constructor rejects makes the string unparseable as a date time, which is what
+                // this method's contract already says to report. Letting the exception escape a TryParse would
+                // hand the caller a failure mode it has no reason to expect.
+                dateTimeValue = null;
+                return false;
+            }
             return true;
         }
 

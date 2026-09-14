@@ -107,18 +107,20 @@ namespace Hl7.Cql.Iso8601
                     {
                         if (day.Value < 1 || day.Value > 31)
                             throw new ArgumentException("Day must between [1,31]", nameof(day));
-                        else if ((month.Value == 4 || month.Value == 6 || month.Value == 9 || month.Value == 11)
+                        if ((month.Value == 4 || month.Value == 6 || month.Value == 9 || month.Value == 11)
                             && day.Value > 30)
                             throw new ArgumentException("This month has only 30 days", nameof(day));
-                        else if (month.Value == 2)
+                        if (month.Value == 2)
                         {
                             if (day > 28 && (year % 4) != 0)
                                 throw new ArgumentException("Only leap years have 29 days in February", nameof(day));
-                            else if (day > 30)
+                            else if (day > 29)
                                 throw new ArgumentException("February only has 29 days during leap years", nameof(day));
                         }
-                        else
-                            Precision = DateTimePrecision.Day;
+                        // Set unconditionally: these checks are guards, not a classification of the
+                        // precision. Chaining them as else-if left Precision unset - and therefore
+                        // Unknown, which the constructor rejects below - for every legal February date.
+                        Precision = DateTimePrecision.Day;
                     }
                     else
                         Precision = DateTimePrecision.Month;
@@ -177,7 +179,26 @@ namespace Hl7.Cql.Iso8601
         /// <param name="stringValue">The string to parse</param>
         /// <param name="dateValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
         /// <returns><see langword ="true"/> if the string is a valid ISO 8601 date and parsing is successful; otherwise <see langword ="false"/>.</returns>
-        public static bool TryParse(string stringValue, out DateIso8601? dateValue)
+        /// <remarks>
+        /// This overload does not range-check the parsed components. Use the
+        /// <see cref="TryParse(string, bool, out DateIso8601?)"/> overload with <c>strict</c> set to
+        /// <see langword="true"/> to reject a month outside [1,12] or a day that does not exist in the
+        /// month and year given.
+        /// </remarks>
+        public static bool TryParse(string stringValue, out DateIso8601? dateValue) =>
+            TryParse(stringValue, strict: false, out dateValue);
+
+        /// <summary>
+        /// Tries to parse <paramref name="stringValue"/> as an ISO 8601 date, optionally requiring every component
+        /// to fall inside the range ISO 8601 allows for it.
+        /// </summary>
+        /// <param name="stringValue">The string to parse</param>
+        /// <param name="strict">If <see langword ="true"/>, a string whose components are well-formed but out of
+        /// range - a month outside [1,12], or a day that does not exist in the month and year given - is rejected
+        /// instead of being carried into the result.</param>
+        /// <param name="dateValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
+        /// <returns><see langword ="true"/> if the string is a valid ISO 8601 date and parsing is successful; otherwise <see langword ="false"/>.</returns>
+        public static bool TryParse(string stringValue, bool strict, out DateIso8601? dateValue)
         {
             var parts = Expression.Match(stringValue);
             if (!parts.Success || parts.Captures.Count != 1 || parts.Captures[0].Length != stringValue.Length)
@@ -209,7 +230,18 @@ namespace Hl7.Cql.Iso8601
                 return false;
             }
 
-            dateValue = new DateIso8601(stringValue, year!.Value, month, day);
+            try
+            {
+                dateValue = new DateIso8601(stringValue, year!.Value, month, day, strict);
+            }
+            catch (ArgumentException)
+            {
+                // A component the constructor rejects makes the string unparseable as a date, which is what
+                // this method's contract already says to report. Letting the exception escape a TryParse would
+                // hand the caller a failure mode it has no reason to expect.
+                dateValue = null;
+                return false;
+            }
             return true;
         }
 

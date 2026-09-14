@@ -39,7 +39,7 @@ namespace Hl7.Cql.CqlToElm.Visitors
 
             var dateText = context.GetText()[1..];
 
-            if (DateIso8601.TryParse(dateText, out var date) && date is not null)
+            if (DateIso8601.TryParse(dateText, strict: true, out var date) && date is not null)
             {
                 var startLine = context.Start.Line;
                 int startCol = context.Start.Column;
@@ -62,7 +62,10 @@ namespace Hl7.Cql.CqlToElm.Visitors
             }
             else
             {
-                return dateLiteral.AddError($"Unparseable date literal '{dateText}'.", ErrorType.syntax);
+                // The lexer has already checked the literal's shape, so what a strict parse rejects here is a
+                // component that is well-formed but denotes no real date. Reporting it is the point: carried into
+                // ELM unchecked, it reaches the consumer as a plausible value that is not the one that was written.
+                return dateLiteral.AddError($"Invalid date literal '{dateText}'. Month must be in [1,12] and day must exist in that month and year.", ErrorType.semantic);
             }
         }
 
@@ -76,7 +79,7 @@ namespace Hl7.Cql.CqlToElm.Visitors
             if (dateText.EndsWith("T"))
                 dateText = dateText[0..^1];
 
-            if (DateTimeIso8601.TryParse(dateText, out var dateTime) && dateTime is not null)
+            if (DateTimeIso8601.TryParse(dateText, strict: true, out var dateTime) && dateTime is not null)
             {
                 var integerType = SystemTypes.IntegerType;
                 var startLine = context.Start.Line;
@@ -168,7 +171,8 @@ namespace Hl7.Cql.CqlToElm.Visitors
             }
             else
             {
-                return dateTimeLiteral.AddError($"Unparseable date/time literal '{dateText}'.", ErrorType.syntax);
+                // See VisitDateLiteral: a literal the lexer accepted can still name no real point in time.
+                return dateTimeLiteral.AddError($"Invalid date/time literal '{dateText}'. Month must be in [1,12], day must exist in that month and year, hour must be in [0,23], minute and second in [0,59], millisecond in [0,999], and any timezone offset hour in [-14,14].", ErrorType.semantic);
             }
 
         }
@@ -423,7 +427,7 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 locator = context.Locator(),
             }.WithLocator(context.Locator()).WithResultType(SystemTypes.TimeType);
 
-            if (TimeIso8601.TryParse(literalText, out var time))
+            if (TimeIso8601.TryParse(literalText, strict: true, out var time))
             {
                 var integerType = SystemTypes.IntegerType;
                 var startLine = context.Start.Line;
@@ -472,7 +476,8 @@ namespace Hl7.Cql.CqlToElm.Visitors
             }
             else
             {
-                return timeLiteral.AddError($"Unparseable time literal '{literalText}'.", ErrorType.syntax);
+                // See VisitDateLiteral: a literal the lexer accepted can still name no real time of day.
+                return timeLiteral.AddError($"Invalid time literal '{literalText}'. Hour must be in [0,23], minute and second in [0,59], millisecond in [0,999], and any timezone offset hour in [-14,14].", ErrorType.semantic);
             }
 
         }

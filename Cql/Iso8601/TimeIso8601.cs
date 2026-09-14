@@ -278,7 +278,25 @@ namespace Hl7.Cql.Iso8601
         /// <param name="stringValue">The string to parse</param>
         /// <param name="timeValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
         /// <returns><see langword ="true"/> if the string is a valid ISO 8601 time and parsing is successful; otherwise <see langword ="false"/>.</returns>
-        public static bool TryParse(string stringValue, out TimeIso8601? timeValue)
+        /// <remarks>
+        /// This overload does not range-check the parsed components; <c>24:59:59.999</c> parses and yields an
+        /// <see cref="Hour"/> of 24. Use the <see cref="TryParse(string, bool, out TimeIso8601?)"/> overload with
+        /// <c>strict</c> set to <see langword="true"/> to reject such values.
+        /// </remarks>
+        public static bool TryParse(string stringValue, out TimeIso8601? timeValue) =>
+            TryParse(stringValue, strict: false, out timeValue);
+
+        /// <summary>
+        /// Tries to parse <paramref name="stringValue"/> as an ISO 8601 time, optionally requiring every component
+        /// to fall inside the range ISO 8601 allows for it.
+        /// </summary>
+        /// <param name="stringValue">The string to parse</param>
+        /// <param name="strict">If <see langword ="true"/>, a string whose components are well-formed but out of
+        /// range - an hour above 23, a minute or second above 59, a millisecond above 999, or an offset hour outside
+        /// [-14,14] - is rejected instead of being carried into the result.</param>
+        /// <param name="timeValue">The parsed result, or <see langword ="null"/> if unparseable.</param>
+        /// <returns><see langword ="true"/> if the string is a valid ISO 8601 time and parsing is successful; otherwise <see langword ="false"/>.</returns>
+        public static bool TryParse(string stringValue, bool strict, out TimeIso8601? timeValue)
         {
             var parts = Expression.Match(stringValue);
             if (!parts.Success || parts.Captures.Count != 1 || parts.Captures[0].Length != stringValue.Length)
@@ -351,7 +369,18 @@ namespace Hl7.Cql.Iso8601
                 return false;
             }
 
-            timeValue = new TimeIso8601(hour, minute, second, ms, osHour, osMinute);
+            try
+            {
+                timeValue = new TimeIso8601(hour, minute, second, ms, osHour, osMinute, strict);
+            }
+            catch (ArgumentException)
+            {
+                // A component the constructor rejects makes the string unparseable as a time, which is what
+                // this method's contract already says to report. Letting the exception escape a TryParse would
+                // hand the caller a failure mode it has no reason to expect.
+                timeValue = null;
+                return false;
+            }
             return true;
         }
 
