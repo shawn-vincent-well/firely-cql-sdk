@@ -400,7 +400,35 @@ namespace Hl7.Cql.CqlToElm.Test
             Assert.IsNull(result);
         }
 
+        /// <summary>
+        /// The Interval constructor accepts non-literal boundary inclusivity arguments
+        /// (ELM <c>lowClosedExpression</c>/<c>highClosedExpression</c>). Each must be taken from its
+        /// own argument position: the third argument is the low boundary's inclusivity and the
+        /// fourth is the high boundary's. The two expressions here deliberately differ, in shape and
+        /// in value, so that taking one where the other belongs is detectable.
+        /// </summary>
+        [TestMethod]
+        public void Interval_Distinct_Closed_Expressions_Land_In_Their_Own_Slots()
+        {
+            // Interval is a keyword of the interval selector syntax, so the constructor is reached
+            // through a quoted identifier. That is the only route by which non-literal inclusivity
+            // arguments reach the ELM node: the selector syntax always emits Boolean literals.
+            var library = CreateCqlToolkit().MakeLibraryFromExpression("\"Interval\"(1, 10, 1 > 2, 1 < 2)");
+            var interval = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Interval>();
 
+            // Low inclusivity is 1 > 2 (a Greater, false), high inclusivity is 1 < 2 (a Less, true).
+            Assert.IsInstanceOfType(interval.lowClosedExpression, typeof(Greater));
+            Assert.IsInstanceOfType(interval.highClosedExpression, typeof(Less));
+
+            var result = Run(interval, library, FhirCqlContext.ForBundle());
+            Assert.IsInstanceOfType(result, typeof(CqlInterval<int?>));
+            var cqlInterval = (CqlInterval<int?>)result!;
+            // (1, 10] over a point type with a successor is normalised to the closed form [2, 10].
+            Assert.AreEqual(2, cqlInterval.low);
+            Assert.IsTrue(cqlInterval.lowClosed);
+            Assert.AreEqual(10, cqlInterval.high);
+            Assert.IsTrue(cqlInterval.highClosed);
+        }
 
     }
 }
