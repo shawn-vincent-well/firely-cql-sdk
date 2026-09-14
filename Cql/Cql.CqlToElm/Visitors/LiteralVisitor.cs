@@ -246,9 +246,23 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 typeSpecifier = SystemTypes.LongType;
             }
             else if (CqlToElmOptions.ValidateLiterals ?? true)
-                return literal.AddError($"Unparseable numeric literal '{value}'.", ErrorType.syntax);
+            {
+                // The value fits neither Integer nor Long, so this literal is invalid CQL. Report the
+                // error on the node, but still give the node a result type: an expression without one
+                // is not well-formed ELM, and the omission does not stay local. Operator resolution
+                // over an untyped argument fails in turn, so a single out-of-range literal can strip
+                // result types off expressions that are otherwise fine, leaving a consumer unable to
+                // tell a library that failed to translate from a library that carries no type
+                // information. Type it as the type its syntax names - an unsuffixed integer literal is
+                // an Integer (CQL Author's Guide, Simple Values) - the same way VisitLongNumberLiteral
+                // types an out-of-range long literal Long and reports the error alongside it.
+                typeSpecifier = SystemTypes.IntegerType;
+                literal.AddError($"Unparseable numeric literal '{value}'.", ErrorType.syntax);
+            }
             else
             {
+                // Literal validation is off, so this is not an error and the library can still be
+                // translated and generated from. Leave that path emitting exactly what it emitted before.
                 typeSpecifier = SystemTypes.AnyType;
             }
             literal.valueType = typeSpecifier.name;

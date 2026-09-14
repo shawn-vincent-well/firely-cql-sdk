@@ -202,6 +202,80 @@ namespace Hl7.Cql.CqlToElm.Test
                 """, "Unparseable numeric literal*.");
         }
 
+        /// <summary>
+        /// An integer literal the Integer type cannot hold is invalid CQL and must be rejected, but it
+        /// must be rejected as a complete ELM node. Returning the literal without a result type produces
+        /// a document that is not well-formed ELM, and a consumer cannot tell such a document apart from
+        /// one that simply carries no type information.
+        /// </summary>
+        [TestMethod]
+        [DataRow("2147483648", DisplayName = "one past the maximum Integer")]
+        [DataRow("-2147483649", DisplayName = "one below the minimum Integer")]
+        [DataRow("9223372036854775808", DisplayName = "one past the maximum Long")]
+        [DataRow("-9223372036854775809", DisplayName = "one below the minimum Long")]
+        public void IntegerOverflow_IsRejectedAsACompleteIntegerLiteral(string cqlText)
+        {
+            var library = CreateCqlToolkit().MakeLibrary($"""
+                library IntegerOverflowLiteral version '1.0.0'
+
+                define private Overflow_Literal: {cqlText}
+                """, "Unparseable numeric literal*.");
+
+            var literal = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Literal>();
+
+            literal.value.Should().Be(cqlText, "the literal keeps the text it was written with.");
+            literal.valueType.Should().Be(SystemTypes.IntegerType.name,
+                "an unsuffixed integer literal is an Integer, in range or not, and a Literal without a valueType is incomplete.");
+            literal.Should().HaveType(SystemTypes.IntegerType);
+
+            // Round-trip through the reader: the string assertions above pin the object graph, this pins
+            // that the graph is something the ELM serializer can write and read back unchanged.
+            var roundTripped = Library.ParseFromJson(library.SerializeToJson())
+                                      .Should().BeACorrectlyInitializedLibraryWithStatementOfType<Literal>();
+            roundTripped.value.Should().Be(cqlText);
+            roundTripped.valueType.Should().Be(SystemTypes.IntegerType.name);
+            roundTripped.Should().HaveType(SystemTypes.IntegerType);
+        }
+
+        /// <summary>
+        /// The missing result type did not stay on the offending node: an untyped argument makes operator
+        /// resolution fail in turn, so one out-of-range literal could leave a whole library with no result
+        /// types at all. Every definition other than the invalid one must still annotate normally.
+        /// </summary>
+        [TestMethod]
+        public void IntegerOverflow_DoesNotUntypeTheRestOfTheLibrary()
+        {
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library IntegerOverflowScope version '1.0.0'
+
+                define private Before: 42
+                define private Overflow: 2147483648
+                define private UsesOverflow: Floor(2147483648)
+                define private After: 'text'
+                """,
+                "Unparseable numeric literal*.",
+                "Unparseable numeric literal*.");
+
+            library.statements.Should().HaveCount(4);
+            foreach (var statement in library.statements)
+            {
+                statement.expression!.resultTypeSpecifier.Should().NotBeNull(
+                    $"'{statement.name}' must carry a result type even though the library contains an invalid literal.");
+                statement.expression!.resultTypeName.Should().NotBeNull($"'{statement.name}' must carry a result type name.");
+            }
+
+            var before = library.ShouldDefine<ExpressionDef>("Before").ShouldSucceed();
+            before.expression.Should().HaveType(SystemTypes.IntegerType);
+
+            var after = library.ShouldDefine<ExpressionDef>("After").ShouldSucceed();
+            after.expression.Should().HaveType(SystemTypes.StringType);
+
+            // The invalid literal still resolves as an argument, so the operator around it is typed rather
+            // than left unresolved for want of an argument type.
+            var floor = library.ShouldDefine<ExpressionDef>("UsesOverflow").expression.Should().BeOfType<Floor>().Subject;
+            floor.Should().HaveType(SystemTypes.IntegerType);
+        }
+
         #endregion
 
         #region Long
