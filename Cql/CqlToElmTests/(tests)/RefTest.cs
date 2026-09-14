@@ -430,15 +430,105 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         [TestMethod]
-        public void InvokeChoiceMembers()
+        public void InvokeUnknownChoiceMember()
         {
+            // None of the components declares 'left', so the member cannot be resolved. The error names
+            // the missing member, matching the wording used for a named type - a choice type as such is
+            // not memberless (see InvokeChoiceMember* below).
             _ = CreateCqlToolkit().MakeLibrary($"""
                 library BareMinimum version '0.0.1'
                 using FHIR
 
                 define function choice() returns Choice<String,Integer> : external
                 define error: choice().left
-                """, "Type Choice<String, Integer> has no members.");
+                """, "Member 'left' not found for type Choice<String, Integer>.");
+        }
+
+        // Developer's Guide, Choice Types: "When accessing an element of a choice type with structured
+        // types as components, any element can be accessed. Note, however, that if the element being
+        // accessed is present in multiple components, the resulting expression may be a choice type if
+        // the elements have different types."
+
+        [TestMethod]
+        public void InvokeChoiceMemberDeclaredByEveryComponent()
+        {
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library BareMinimum version '0.0.1'
+
+                define function choice() returns Choice<Tuple{ shared Integer, only1 String }, Tuple{ shared Integer, only2 Boolean }> : external
+                define sharedMember: choice().shared
+                """);
+
+            var prop = shouldDefineExpression(library, "sharedMember")
+                       .expression.Should().BeOfType<Property>().Subject;
+            prop.path.Should().Be("shared");
+            // Both components declare it with the same type, so the choice degenerates to that type.
+            prop.resultTypeSpecifier.Should().Be(SystemTypes.IntegerType);
+        }
+
+        [TestMethod]
+        public void InvokeChoiceMemberDeclaredByOneComponent()
+        {
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library BareMinimum version '0.0.1'
+
+                define function choice() returns Choice<Tuple{ shared Integer, only1 String }, Tuple{ shared Integer, only2 Boolean }> : external
+                define partialMember: choice().only2
+                """);
+
+            var prop = shouldDefineExpression(library, "partialMember")
+                       .expression.Should().BeOfType<Property>().Subject;
+            prop.path.Should().Be("only2");
+            // A component that does not declare the member contributes nothing; at run time it is null,
+            // exactly as the implicit cast to a component type is.
+            prop.resultTypeSpecifier.Should().Be(SystemTypes.BooleanType);
+        }
+
+        [TestMethod]
+        public void InvokeQuotedChoiceMemberOverModelType()
+        {
+            // Patient.deceased is deceased[x] in FHIR R4: a choice of boolean and dateTime. Both
+            // components declare 'value', with different types, so the property is itself a choice.
+            // The quoted form of the identifier must behave identically to the bare form - quoting
+            // only escapes the lexer, it does not change how the path is resolved.
+            foreach (var path in new[] { "\"value\"", "value" })
+            {
+                var library = CreateCqlToolkit().MakeLibrary($"""
+                    library BareMinimum version '0.0.1'
+                    using FHIR
+
+                    context Patient
+
+                    define deceasedValue: Patient.deceased.{path}
+                    """);
+
+                var prop = shouldDefineExpression(library, "deceasedValue")
+                           .expression.Should().BeOfType<Property>().Subject;
+                prop.path.Should().Be("value");
+                prop.resultTypeSpecifier.Should()
+                    .Be(new ChoiceTypeSpecifier(SystemTypes.BooleanType, SystemTypes.DateTimeType));
+
+                var bundle = new M.Bundle();
+                bundle.Entry.Add(new() { Resource = new M.Patient { Deceased = new M.FhirBoolean(true) } });
+                Run<bool?>(library, "deceasedValue", bundle).Should().Be(true);
+            }
+        }
+
+        [TestMethod]
+        public void InvokeChoiceMemberAsFunctionArgument()
+        {
+            // An untyped node escaping the property visitor used to reach overload resolution, where
+            // formatting the argument types dereferenced the missing result type and translation threw
+            // instead of producing an expression or a translation error.
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library BareMinimum version '0.0.1'
+
+                define function choice() returns Choice<Tuple{ shared Integer, only1 String }, Tuple{ shared Integer, only2 Boolean }> : external
+                define memberAsString: ToString(choice().only2)
+                """);
+
+            shouldDefineExpression(library, "memberAsString")
+                .expression.resultTypeSpecifier.Should().Be(SystemTypes.StringType);
         }
 
         [TestMethod]

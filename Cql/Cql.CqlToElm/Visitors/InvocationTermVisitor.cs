@@ -250,7 +250,13 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 Elm.TupleTypeSpecifier tts => navigateIntoTuple(source, tts, memberName),
                 Elm.IntervalTypeSpecifier ivs => navigateIntoInterval(source, ivs, memberName),
                 Elm.ListTypeSpecifier lts => navigateIntoList(source, lts, memberName),
-                _ => makeProp(source, memberName).AddError($"Type {source.resultTypeSpecifier} has no members.")
+                Elm.ChoiceTypeSpecifier cts => navigateIntoChoice(source, cts, memberName),
+                // Every other branch produces a typed node, so this one must too: an expression that
+                // escapes translation without a result type makes every consumer of resultTypeSpecifier
+                // (overload resolution, coercion, error formatting) a null-reference hazard.
+                _ => makeProp(source, memberName)
+                        .AddError($"Type {source.resultTypeSpecifier} has no members.")
+                        .WithResultType(SystemTypes.AnyType)
             };
         }
 
@@ -314,6 +320,108 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 "lowClosed" or "highClosed" => prop.WithResultType(SystemTypes.BooleanType),
                 _ => prop.AddError($"Invalid interval property name '{memberName}'.")
             };
+        }
+
+        // https://cql.hl7.org/03-developersguide.html#choice-types
+        // "When accessing an element of a choice type with structured types as components, any element
+        // can be accessed. Note, however, that if the element being accessed is present in multiple
+        // components, the resulting expression may be a choice type if the elements have different types."
+        //
+        // So the member is legal as long as at least one component declares it, and the type of the
+        // resulting property is the choice of that member's type over the components that declare it.
+        // Components that do not declare the member simply contribute nothing: at run time they yield
+        // null, exactly as the implicit cast to a component type does.
+        private Property navigateIntoChoice(Expression source, Elm.ChoiceTypeSpecifier cts, string memberName)
+        {
+            var prop = makeProp(source, memberName);
+
+            if (!tryGetMemberType(cts, memberName, out var memberType) || memberType is null)
+                return prop
+                    .AddError($"Member '{memberName}' not found for type {cts}.")
+                    .WithResultType(SystemTypes.AnyType);
+
+            return prop.WithResultType(memberType);
+        }
+
+        /// <summary>
+        /// Determines the type of <paramref name="memberName"/> on <paramref name="typeSpecifier"/>, without
+        /// building an expression for it. Used to resolve a member across the components of a choice type.
+        /// </summary>
+        /// <remarks>
+        /// A list-typed component yields <c>false</c>: navigating into a list is a query rather than a
+        /// property access (see <see cref="navigateIntoList"/>), which cannot be folded into the single
+        /// <see cref="Property"/> that navigating into a choice type produces.
+        /// </remarks>
+        /// <returns><c>true</c> if <paramref name="typeSpecifier"/> has such a member, <c>false</c> otherwise.</returns>
+        private bool tryGetMemberType(Elm.TypeSpecifier typeSpecifier, string memberName, out Elm.TypeSpecifier? memberType)
+        {
+            switch (typeSpecifier)
+            {
+                case Elm.NamedTypeSpecifier nts:
+                    {
+                        var (uri, typeName) = nts;
+                        // Unlike FindTypeInfoByNamedType, this must not throw for a component whose type is
+                        // not in any loaded model - that component just cannot contribute a member here.
+                        if (ModelProvider.TryFindTypeInfoByName(uri, typeName, out var typeInfo, out _)
+                            && typeInfo is ClassInfo ci
+                            && ModelProvider.TryGetElement(ci, memberName, out var elementInfo)
+                            && elementInfo is not null)
+                        {
+                            memberType = elementInfo.GetTypeSpecifierForElement(ModelProvider);
+                            return true;
+                        }
+                        break;
+                    }
+                case Elm.TupleTypeSpecifier tts:
+                    {
+                        if (tts.element?.SingleOrDefault(e => e.name == memberName) is { } element)
+                        {
+                            memberType = element.elementType;
+                            return true;
+                        }
+                        break;
+                    }
+                case Elm.IntervalTypeSpecifier ivs:
+                    switch (memberName)
+                    {
+                        case "low" or "high":
+                            memberType = ivs.pointType;
+                            return true;
+                        case "lowClosed" or "highClosed":
+                            memberType = SystemTypes.BooleanType;
+                            return true;
+                    }
+                    break;
+                case Elm.ChoiceTypeSpecifier cts:
+                    {
+                        // The member's type is the choice of its type over every component that declares it.
+                        // Components contributing the same type are collapsed, and a choice of one degenerates
+                        // to that single type.
+                        var memberTypes = new List<Elm.TypeSpecifier>();
+                        foreach (var alternative in cts.choice ?? Enumerable.Empty<Elm.TypeSpecifier>())
+                        {
+                            if (alternative is not null
+                                && tryGetMemberType(alternative, memberName, out var alternativeMemberType)
+                                && alternativeMemberType is not null
+                                && !memberTypes.Contains(alternativeMemberType))
+                            {
+                                memberTypes.Add(alternativeMemberType);
+                            }
+                        }
+
+                        if (memberTypes.Count > 0)
+                        {
+                            memberType = memberTypes.Count == 1
+                                ? memberTypes[0]
+                                : new Elm.ChoiceTypeSpecifier(memberTypes);
+                            return true;
+                        }
+                        break;
+                    }
+            }
+
+            memberType = null;
+            return false;
         }
 
         private Property makeProp(Expression source, string member) => new()
