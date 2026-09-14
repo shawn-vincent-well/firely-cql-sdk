@@ -187,14 +187,29 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 _ => null
             };
 
-            if (terminology is CodeRef)
+            if (terminology is not null)
             {
-                codeComparator = "~";
-                codePath = "code";
-                terminology = new ToList
+                // A retrieve that filters by terminology but names no code path filters on the
+                // type's primary code path, and one that names no comparator matches a single code
+                // with `~` and anything else (a value set, a list of codes) with `in`. Both are
+                // written into the ELM rather than left for the consumer to infer: ELM is specified
+                // to be processable without reference to the model information, and a Retrieve
+                // carrying `codes` and no `codeProperty` cannot be, because the property to match
+                // against lives only in the ModelInfo. The path was previously left null for every
+                // terminology except a single code, and for that one it was the literal "code" --
+                // right for Observation and Condition, wrong for MedicationRequest (`medication`),
+                // Immunization (`vaccineCode`) and Encounter (`type`).
+                codePath ??= PrimaryCodePath(type);
+                if (terminology is CodeRef)
                 {
-                    operand = terminology
-                };
+                    codeComparator ??= "~";
+                    terminology = new ToList
+                    {
+                        operand = terminology
+                    };
+                }
+                else
+                    codeComparator ??= "in";
             }
 
             var retrieve = new Retrieve
@@ -208,6 +223,19 @@ namespace Hl7.Cql.CqlToElm.Visitors
             }.WithResultType(type.ToListType()).WithLocator(context.Locator());
 
             return retrieve;
+        }
+
+        /// <summary>
+        /// The primary code path the model declares for <paramref name="type"/>, or null when the
+        /// model declares none. A type with no primary code path leaves the Retrieve without a
+        /// <c>codeProperty</c>, exactly as before.
+        /// </summary>
+        private string? PrimaryCodePath(NamedTypeSpecifier type)
+        {
+            var (_, typeInfo) = ModelProvider.FindTypeInfoByNamedType(type);
+            return typeInfo is Hl7.Cql.Model.ClassInfo { primaryCodePath: { } path } && !string.IsNullOrWhiteSpace(path)
+                ? path
+                : null;
         }
 
         public override Expression VisitTerminology([Antlr4.Runtime.Misc.NotNull] cqlParser.TerminologyContext context)

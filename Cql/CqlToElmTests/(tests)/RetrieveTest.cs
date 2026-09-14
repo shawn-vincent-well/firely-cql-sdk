@@ -231,7 +231,10 @@ namespace Hl7.Cql.CqlToElm.Test
 
             var retrieve = (Retrieve)aliasedQuerySource.expression;
             Assert.AreEqual("{http://hl7.org/fhir}Observation", retrieve.dataType?.Name);
-            // Note: codeProperty and codeComparator may not be set when using list syntax in retrieves
+            // The list names no code path and no comparator, so both come from the model and the
+            // default: the primary code path of Observation, matched with `in`.
+            Assert.AreEqual("code", retrieve.codeProperty);
+            Assert.AreEqual("in", retrieve.codeComparator);
             Assert.IsNotNull(retrieve.codes);
             Assert.IsInstanceOfType(retrieve.codes, typeof(Elm.List));
 
@@ -242,6 +245,80 @@ namespace Hl7.Cql.CqlToElm.Test
 
             var codeRef = (CodeRef)list.element[0];
             Assert.AreEqual("Systolic BP", codeRef.name);
+        }
+
+        [TestMethod]
+        public void Retrieve_ValueSetWithoutCodePath_CarriesThePrimaryCodePath()
+        {
+            // `[Condition: "terminology"]` names no code path and no comparator. The ELM must still
+            // say what to match against: the specification states that ELM is processable without
+            // reference to the model information, and a Retrieve carrying `codes` and no
+            // `codeProperty` is not, because the property lives only in the ModelInfo. This
+            // translated with both attributes absent.
+            var lib = CreateCqlToolkit().MakeLibrary("""
+                library Test version '1.0.0'
+                using FHIR version '4.0.1'
+                valueset "terminology": 'http://fire.ly/ValueSet/Test'
+                define "Conditions": [Condition: "terminology"]
+                """);
+            var retrieve = lib.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Retrieve>();
+            retrieve.codeProperty.Should().Be("code");
+            retrieve.codeComparator.Should().Be("in");
+            retrieve.codes.Should().BeOfType<ValueSetRef>();
+
+            // Round-trip, because the attributes are what a consumer reads and the writer omits
+            // unset ones silently.
+            var reread = Hl7.Cql.Elm.Library.ParseFromJson(lib.SerializeToJson());
+            var rereadRetrieve = reread.statements.Should().ContainSingle()
+                                       .Which.expression.Should().BeOfType<Retrieve>().Subject;
+            rereadRetrieve.codeProperty.Should().Be("code");
+            rereadRetrieve.codeComparator.Should().Be("in");
+        }
+
+        [TestMethod]
+        public void Retrieve_PrimaryCodePathIsTheModelsNotTheLiteralCode()
+        {
+            // The primary code path is a property of the type, not the string "code". A single
+            // code against a type whose primary code path is something else used to be emitted
+            // with `codeProperty = "code"` regardless, which names a property MedicationRequest
+            // does not have.
+            var lib = CreateCqlToolkit().MakeLibrary("""
+                library Test version '1.0.0'
+                using FHIR version '4.0.1'
+                codesystem "RxNorm": 'http://www.nlm.nih.gov/research/umls/rxnorm'
+                code "Metformin": '6809' from "RxNorm"
+                valueset "Statins": 'http://fire.ly/ValueSet/Statins'
+                define "By code": [MedicationRequest: "Metformin"]
+                define "By value set": [MedicationRequest: "Statins"]
+                define "Immunizations": [Immunization: "Statins"]
+                define "Encounters": [Encounter: "Statins"]
+                """);
+            var byName = lib.statements.ToDictionary(s => s.name, s => (Retrieve)s.expression);
+
+            byName["By code"].codeProperty.Should().Be("medication");
+            byName["By code"].codeComparator.Should().Be("~");
+            byName["By code"].codes.Should().BeOfType<ToList>();
+
+            byName["By value set"].codeProperty.Should().Be("medication");
+            byName["By value set"].codeComparator.Should().Be("in");
+
+            byName["Immunizations"].codeProperty.Should().Be("vaccineCode");
+            byName["Encounters"].codeProperty.Should().Be("type");
+        }
+
+        [TestMethod]
+        public void Retrieve_ExplicitCodePathAndComparatorAreKept()
+        {
+            // Authored values win over the defaults, exactly as before.
+            var lib = CreateCqlToolkit().MakeLibrary("""
+                library Test version '1.0.0'
+                using FHIR version '4.0.1'
+                valueset "terminology": 'http://fire.ly/ValueSet/Test'
+                define "Observations": [Observation: category ~ "terminology"]
+                """);
+            var retrieve = lib.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Retrieve>();
+            retrieve.codeProperty.Should().Be("category");
+            retrieve.codeComparator.Should().Be("~");
         }
     }
 }
