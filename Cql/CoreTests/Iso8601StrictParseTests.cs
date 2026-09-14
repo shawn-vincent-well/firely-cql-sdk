@@ -100,6 +100,71 @@ public class Iso8601StrictParseTests
         Assert.AreEqual(value, dateTime!.ToString());
     }
 
+    // A Gregorian year is a leap year when it is divisible by 4, except for centuries, which must also
+    // be divisible by 400. The two rules only diverge on century years, so those are what these cover.
+
+    [DataTestMethod]
+    [DataRow(2024)] // divisible by 4
+    [DataRow(2000)] // century divisible by 400
+    public void DateIso8601_Strict_AcceptsFebruary29InALeapYear(int year)
+    {
+        var date = new DateIso8601(year, 2, 29, strict: true);
+
+        Assert.AreEqual($"{year}-02-29", date.ToString());
+    }
+
+    [DataTestMethod]
+    [DataRow(2023)] // not divisible by 4
+    [DataRow(1900)] // century not divisible by 400
+    [DataRow(2100)] // century not divisible by 400
+    public void DateIso8601_Strict_RejectsFebruary29InACommonYear(int year)
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => new DateIso8601(year, 2, 29, strict: true));
+    }
+
+    [DataTestMethod]
+    [DataRow(2024)]
+    [DataRow(2000)]
+    public void DateTimeIso8601_Strict_AcceptsFebruary29InALeapYear(int year)
+    {
+        var dateTime = new DateTimeIso8601(year, 2, 29, null, null, null, null, null, null, strict: true);
+
+        Assert.AreEqual($"{year}-02-29", dateTime.ToString());
+    }
+
+    [DataTestMethod]
+    [DataRow(2023)]
+    [DataRow(1900)]
+    [DataRow(2100)]
+    public void DateTimeIso8601_Strict_RejectsFebruary29InACommonYear(int year)
+    {
+        Assert.ThrowsExactly<ArgumentException>(
+            () => new DateTimeIso8601(year, 2, 29, null, null, null, null, null, null, strict: true));
+    }
+
+    [DataTestMethod]
+    [DataRow("2024-02-29")]
+    [DataRow("2000-02-29")]
+    public void StrictParse_AcceptsFebruary29InALeapYear(string value)
+    {
+        Assert.IsTrue(DateIso8601.TryParse(value, strict: true, out var date));
+        Assert.AreEqual(value, date!.ToString());
+        Assert.IsTrue(DateTimeIso8601.TryParse(value, strict: true, out var dateTime));
+        Assert.AreEqual(value, dateTime!.ToString());
+    }
+
+    [DataTestMethod]
+    [DataRow("2023-02-29")]
+    [DataRow("1900-02-29")]
+    [DataRow("2100-02-29")]
+    public void StrictParse_RejectsFebruary29InACommonYear(string value)
+    {
+        Assert.IsFalse(DateIso8601.TryParse(value, strict: true, out var date));
+        Assert.IsNull(date);
+        Assert.IsFalse(DateTimeIso8601.TryParse(value, strict: true, out var dateTime));
+        Assert.IsNull(dateTime);
+    }
+
     [TestMethod]
     public void TryParse_ReportsFailureInsteadOfThrowing()
     {

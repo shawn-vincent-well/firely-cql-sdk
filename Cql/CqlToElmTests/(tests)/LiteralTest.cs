@@ -1418,6 +1418,34 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         [TestMethod]
+        public void Date_Literal_February_29_Follows_The_Gregorian_Leap_Year_Rule()
+        {
+            // Divisible by 4, and a century divisible by 400: both are leap years.
+            CreateCqlToolkit().MakeLibrary("""
+                library DateLeapYear version '1.0.0'
+
+                define private Date_Literal: @2024-02-29
+                """);
+            CreateCqlToolkit().MakeLibrary("""
+                library DateLeapCentury version '1.0.0'
+
+                define private Date_Literal: @2000-02-29
+                """);
+
+            // A century not divisible by 400 is a common year, and has no February 29.
+            CreateCqlToolkit().MakeLibrary("""
+                library DateCommonCentury version '1.0.0'
+
+                define private Date_Literal: @1900-02-29
+                """, "Invalid date literal '1900-02-29'.*");
+            CreateCqlToolkit().MakeLibrary("""
+                library DateCommonCentury2 version '1.0.0'
+
+                define private Date_Literal: @2100-02-29
+                """, "Invalid date literal '2100-02-29'.*");
+        }
+
+        [TestMethod]
         public void DateTime_Literal_Hour_Out_Of_Range()
         {
             CreateCqlToolkit().MakeLibrary("""

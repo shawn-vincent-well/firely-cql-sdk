@@ -177,7 +177,10 @@ namespace Hl7.Cql.Iso8601
                             throw new ArgumentException("This month has only 30 days", nameof(day));
                         else if (month.Value == 2)
                         {
-                            if (day > 28 && (year % 4) != 0)
+                            // A Gregorian year is a leap year when it is divisible by 4, except for centuries,
+                            // which must also be divisible by 400 - so 2000 is one and 1900 and 2100 are not.
+                            // Defer to the BCL rather than restate the rule: "year % 4" gets the centuries wrong.
+                            if (day > 28 && !System.DateTime.IsLeapYear(year))
                                 throw new ArgumentException("Only leap years have 29 days in February", nameof(day));
                             else if (day > 29)
                                 throw new ArgumentException("February only has 29 days during leap years", nameof(day));

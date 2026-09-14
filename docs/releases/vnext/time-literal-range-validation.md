@@ -41,6 +41,17 @@
   `Precision` is assigned unconditionally. Relatedly, February's upper bound in a leap year was
   written as `day > 30` in both `DateIso8601` and `DateTimeIso8601` and is now `day > 29`.
 
+- **`Hl7.Cql.Iso8601`:** the strict validation in `DateIso8601` and `DateTimeIso8601` tested for a leap
+  year with `year % 4 == 0`, which is not the Gregorian rule: a year divisible by 4 is a leap year
+  *except* for centuries, which must also be divisible by 400. February 29 was therefore accepted in
+  1900, 2100, 2200 and every other common century year, and 2000 was accepted only by coincidence.
+  Both now call `System.DateTime.IsLeapYear`, as the rest of the SDK's date arithmetic already does.
+  `new DateIso8601(1900, 2, 29, strict: true)` and `new CqlDateTime(1900, 2, 29, …)` did still fail,
+  because `System.DateTimeOffset`'s constructor rejected the date a few lines later — but with an
+  `ArgumentOutOfRangeException` and a framework message, rather than the `ArgumentException` naming
+  the offending parameter that this validation exists to raise. The exception type thrown for
+  February 29 in a common century year changes accordingly.
+
 ## Features
 
 - **`Hl7.Cql.Iso8601`:** `DateIso8601`, `DateTimeIso8601` and `TimeIso8601` each gain a
