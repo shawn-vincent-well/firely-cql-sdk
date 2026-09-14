@@ -168,6 +168,10 @@
     <value>Identifier {0} is already in use in this scope.</value>
     <comment>{0} = identifier name unquoted</comment>
   </data>
+  <data name="FunctionReferencedWithoutArguments" xml:space="preserve">
+    <value>{0} is a function and must be invoked with an argument list; no expression named {0} is defined.</value>
+    <comment>{0} = unquoted identifier</comment>
+  </data>
   <data name="IdentifierAlreadyInUse" xml:space="preserve">
     <value>Identifier {0} is already in use in this library.</value>
     <comment>{0} = unquoted identifier</comment>

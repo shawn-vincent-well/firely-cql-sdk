@@ -94,8 +94,15 @@ namespace Hl7.Cql.CqlToElm.Test
             var ed = resolved.Should().BeOfType<ExpressionDef>().Subject;
             ed.name.Should().Be(name);
 
+            // A function and an expression may share a name: functions are only ever referenced
+            // with an argument list, so nothing is ambiguous. The expression keeps winning a symbol
+            // lookup; the function is reached through TryResolveFunction.
             var f1 = new SystemFunction<Expression>(new TypeSpecifier[] { SystemTypes.IntegerType }, SystemTypes.BooleanType, name);
-            st.TryAdd(f1).Should().BeFalse();
+            st.TryAdd(f1).Should().BeTrue();
+            st.TryResolveSymbol(name, out var stillExpression).Should().BeTrue();
+            stillExpression.Should().BeOfType<ExpressionDef>();
+            st.TryResolveFunction(name, out var function).Should().BeTrue();
+            function.Should().BeOfType<OverloadedFunctionDef>().Which.Functions.Should().ContainSingle();
         }
 
         [TestMethod]

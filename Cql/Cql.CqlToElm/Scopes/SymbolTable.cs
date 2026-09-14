@@ -18,7 +18,16 @@ namespace Hl7.Cql.CqlToElm.Scopes
             Name = name;
             Parent = parent;
         }
+        // Expressions, parameters, aliases, terminology, libraries and models live here...
         private Dictionary<string, IDefinitionElement> LocalSymbols { get; } = new();
+
+        // ...and functions live apart from them. CQL distinguishes the two by syntax -- a function
+        // is only ever referenced with an argument list -- so an expression and a function may share
+        // a name, and the HL7 reference translator accepts a library that does so. Keyed together,
+        // the second definition was rejected as "already in use" and, worse, a bare reference to the
+        // expression's name resolved to the function, whose ToRef throws NotSupportedException: the
+        // whole translation died with an internal exception rather than an error.
+        private Dictionary<string, IFunctionElement> LocalFunctions { get; } = new();
 
         public string Name { get; }
 
@@ -35,19 +44,14 @@ namespace Hl7.Cql.CqlToElm.Scopes
         {
             if (symbol is IFunctionElement function)
             {
-                if (LocalSymbols.TryGetValue(symbol.Name, out var existing))
+                if (LocalFunctions.TryGetValue(symbol.Name, out var existingFunction))
                 {
-                    if (existing is IFunctionElement existingFunction)
-                    {
-                        // replace existing symbol with new overload.
-                        LocalSymbols[symbol.Name] = OverloadedFunctionDef.Create(existingFunction, function);
-                        return true;
-                    }
-                    else
-                        return false;
+                    // replace existing symbol with new overload.
+                    LocalFunctions[symbol.Name] = OverloadedFunctionDef.Create(existingFunction, function);
                 }
                 else
-                    symbol = OverloadedFunctionDef.Create(function);
+                    LocalFunctions[symbol.Name] = OverloadedFunctionDef.Create(function);
+                return true;
             }
             return LocalSymbols.TryAdd(symbol.Name, symbol);
         }
@@ -57,6 +61,16 @@ namespace Hl7.Cql.CqlToElm.Scopes
         {
             if (LocalSymbols.TryGetValue(identifier, out symbol))
                 return true;
+            // After the scope's own symbols, so that a name shared by an expression and a function
+            // resolves to the expression wherever an expression is expected; before the parent, so
+            // that a local function still shadows a parent's (the System library's `Add`, say)
+            // exactly as it did when the two shared one dictionary. A caller in expression position
+            // that receives a function has to report that rather than build a ref from it.
+            else if (LocalFunctions.TryGetValue(identifier, out var function))
+            {
+                symbol = function;
+                return true;
+            }
             else if (Parent is not null && Parent.TryResolveSymbol(identifier, out symbol))
                 return true;
             symbol = null;
@@ -65,7 +79,7 @@ namespace Hl7.Cql.CqlToElm.Scopes
 
         public bool TryResolveFunction(string identifier, [NotNullWhen(true)] out IFunctionElement? symbol)
         {
-            var inLocal = LocalSymbols.TryGetValue(identifier, out var local) && local is IFunctionElement;
+            var inLocal = LocalFunctions.TryGetValue(identifier, out var local);
             IFunctionElement? parentFunction = null;
             var inParent = Parent is not null && Parent.TryResolveFunction(identifier, out parentFunction) && parentFunction is IFunctionElement;
             if (inLocal)
@@ -247,7 +261,8 @@ namespace Hl7.Cql.CqlToElm.Scopes
                 _ => LocalSymbols.Values.OfType<ReferencedLibrary>()
             };
 
-        public IEnumerator<IDefinitionElement> GetEnumerator() => LocalSymbols.Values.GetEnumerator();
+        public IEnumerator<IDefinitionElement> GetEnumerator() =>
+            LocalSymbols.Values.Concat(LocalFunctions.Values).GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

@@ -22,6 +22,12 @@ namespace Hl7.Cql.CqlToElm
             var success = TryResolveSymbol(symbolScope, libraryAlias, identifier, out var result);
             if (success)
             {
+                // A function is only ever referenced with an argument list, and a symbol lookup
+                // hands one back only when no expression of that name exists. Reporting it here
+                // rather than letting ToRef throw NotSupportedException is the difference between
+                // a translation error and a dead translation.
+                if (result is IFunctionElement)
+                    return MakeErrorReference(libraryAlias, identifier, messaging.FunctionReferencedWithoutArguments(identifier));
                 try
                 {
                     return result!.ToRef(libraryAlias);

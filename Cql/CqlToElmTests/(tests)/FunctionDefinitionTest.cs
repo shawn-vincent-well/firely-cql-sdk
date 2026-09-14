@@ -315,5 +315,52 @@ namespace Hl7.Cql.CqlToElm.Test
             };
             act.Should().NotThrow();
         }
+
+        [TestMethod]
+        public void ExpressionAndFunctionMayShareAName()
+        {
+            // A function is only ever referenced with an argument list, so nothing in the syntax is
+            // ambiguous when an expression carries the same name, and the HL7 reference translator
+            // accepts such a library. This one was rejected as an identifier already in use and then,
+            // because the bare name resolved to the function, died with NotSupportedException from
+            // OverloadedFunctionDef.ToRef before that error could be reported.
+            var library = CreateCqlToolkit().MakeLibrary("""
+                library SameName version '1.0.0'
+                define function "Span"(a Integer, b Integer): a + b
+                define "Span": 1
+                define "By name": "Span"
+                define "By call": Span(1, 2)
+                """);
+            library.statements.OfType<FunctionDef>().Should().ContainSingle(s => s.name == "Span")
+                .Which.resultTypeSpecifier.Should().Be(SystemTypes.IntegerType);
+            library.statements.Where(s => s is not FunctionDef).Should().ContainSingle(s => s.name == "Span")
+                .Which.expression.Should().BeLiteralInteger(1);
+            library.ShouldDefine<ExpressionDef>("By name").expression.Should().BeOfType<ExpressionRef>()
+                .Which.name.Should().Be("Span");
+            library.ShouldDefine<ExpressionDef>("By call").expression.Should().BeOfType<FunctionRef>()
+                .Which.name.Should().Be("Span");
+        }
+
+        [TestMethod]
+        public void BareReferenceToAFunctionIsATranslationError()
+        {
+            // Not a NotSupportedException. The name resolves to a function and nothing else, and a
+            // function cannot be referenced without an argument list.
+            CreateCqlToolkit().MakeLibrary("""
+                library BareFunction version '1.0.0'
+                define function "Span"(a Integer, b Integer): a + b
+                define "x": "Span"
+                """, "Span is a function and must be invoked with an argument list; no expression named Span is defined.");
+        }
+
+        [TestMethod]
+        public void TwoExpressionsWithOneNameAreStillRejected()
+        {
+            CreateCqlToolkit().MakeLibrary("""
+                library Twice version '1.0.0'
+                define "Span": 1
+                define "Span": 2
+                """, "Identifier Span is already in use in this library.");
+        }
     }
 }

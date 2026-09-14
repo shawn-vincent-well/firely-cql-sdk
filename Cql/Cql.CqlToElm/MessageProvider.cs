@@ -58,6 +58,8 @@ namespace Hl7.Cql.CqlToElm
             string.Format(Culture, Messages.ExpressionCannotBeLibraryRef, library);
         public string FoundMultipleLibraries(string name) =>
             string.Format(Culture, Messages.FoundMultipleLibraries, name);        
+        public string FunctionReferencedWithoutArguments(string name) =>
+            string.Format(Culture, Messages.FunctionReferencedWithoutArguments, name);
         public string IdentifierAlreadyInUse(string name) =>
             string.Format(Culture, Messages.IdentifierAlreadyInUse, name);
         public string IdentifierAlreadyInScope(string name) =>

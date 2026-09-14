@@ -186,6 +186,15 @@ namespace Hl7.Cql.CqlToElm {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to {0} is a function and must be invoked with an argument list; no expression named {0} is defined..
+        /// </summary>
+        internal static string FunctionReferencedWithoutArguments {
+            get {
+                return ResourceManager.GetString("FunctionReferencedWithoutArguments", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Identifier {0} is already in use in this library..
         /// </summary>
         internal static string IdentifierAlreadyInUse {

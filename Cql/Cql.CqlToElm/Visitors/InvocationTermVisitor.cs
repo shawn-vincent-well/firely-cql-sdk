@@ -23,7 +23,12 @@ namespace Hl7.Cql.CqlToElm.Visitors
             {
                 var term = qualifiers[0].referentialIdentifier().Parse();
                 if (LibraryBuilder.CurrentScope.TryResolveSymbol(term, out var symbol))
+                {
+                    if (symbol is IFunctionElement)
+                        return new IdentifierRef { name = term }
+                            .AddError(MessagingProvider.FunctionReferencedWithoutArguments(term));
                     expression = symbol.ToRef(null);
+                }
                 else return new IdentifierRef
                 {
                     name = term,
@@ -42,7 +47,14 @@ namespace Hl7.Cql.CqlToElm.Visitors
             {
                 var term = context.referentialIdentifier().Parse();
                 if (LibraryBuilder.CurrentScope.TryResolveSymbol(term, out var symbol))
+                {
+                    // A function is only referenced with an argument list; a bare name that resolves
+                    // to nothing but a function is an error, and was a NotSupportedException.
+                    if (symbol is IFunctionElement)
+                        return new IdentifierRef { name = term }
+                            .AddError(MessagingProvider.FunctionReferencedWithoutArguments(term));
                     return symbol.ToRef(null);
+                }
                 else return new IdentifierRef
                 {
                     name = term,
