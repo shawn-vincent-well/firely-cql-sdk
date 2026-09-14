@@ -167,5 +167,88 @@ namespace Hl7.Cql.CqlToElm.Test
             var result = Run(toBoolean, library);
             result.Should().BeNull();
         }
+
+        // The ConvertsToX(argument Any) Boolean family, ConvertQuantity, CanConvertQuantity,
+        // GeometricMean and the Boolean/String overloads of ToLong are CQL 1.5 operators the runtime
+        // implements. They were missing from the System library declarations, so a library using
+        // one failed to translate with "Could not resolve call to operator ...". Each test
+        // translates AND runs, so the ELM node reaches the runtime binding as well.
+
+        [DataTestMethod]
+        [DataRow("ConvertsToBoolean('true')", typeof(ConvertsToBoolean), true)]
+        [DataRow("ConvertsToBoolean('maybe')", typeof(ConvertsToBoolean), false)]
+        [DataRow("ConvertsToDate('2014-01-01')", typeof(ConvertsToDate), true)]
+        [DataRow("ConvertsToDateTime('2014-01-01T12:00:00')", typeof(ConvertsToDateTime), true)]
+        [DataRow("ConvertsToDecimal('1.5')", typeof(ConvertsToDecimal), true)]
+        [DataRow("ConvertsToInteger('42')", typeof(ConvertsToInteger), true)]
+        [DataRow("ConvertsToInteger('4.2')", typeof(ConvertsToInteger), false)]
+        [DataRow("ConvertsToInteger(4.2)", typeof(ConvertsToInteger), false)]
+        [DataRow("ConvertsToInteger(4294967296L)", typeof(ConvertsToInteger), false)]
+        [DataRow("ConvertsToBoolean(1)", typeof(ConvertsToBoolean), true)]
+        [DataRow("ConvertsToBoolean(5)", typeof(ConvertsToBoolean), false)]
+        [DataRow("ConvertsToLong('42')", typeof(ConvertsToLong), true)]
+        [DataRow("ConvertsToQuantity('5 \\'mg\\'')", typeof(ConvertsToQuantity), true)]
+        [DataRow("ConvertsToString(42)", typeof(ConvertsToString), true)]
+        [DataRow("ConvertsToTime('12:30:00')", typeof(ConvertsToTime), true)]
+        [DataRow("ConvertsToTime('noon')", typeof(ConvertsToTime), false)]
+        public void ConvertsTo_Predicates(string cql, Type node, bool expected)
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(cql);
+            var expression = library.statements.Should().ContainSingle().Which.expression;
+            expression.Should().BeOfType(node);
+            expression.resultTypeSpecifier.Should().Be(SystemTypes.BooleanType);
+            Run(expression, library).Should().Be(expected);
+        }
+
+        [TestMethod]
+        public void ConvertsTo_Null_Is_Null()
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression("ConvertsToInteger(null)");
+            var expression = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<ConvertsToInteger>();
+            Run(expression, library).Should().BeNull();
+        }
+
+        [TestMethod]
+        public void ConvertQuantity_By_Unit_Name()
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression("ConvertQuantity(5 'mg', 'g')");
+            var expression = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<ConvertQuantity>();
+            expression.resultTypeSpecifier.Should().Be(SystemTypes.QuantityType);
+            var q = Run(expression, library).Should().BeOfType<CqlQuantity>().Subject;
+            q.unit.Should().Be("g");
+            q.value.Should().Be(0.005m);
+        }
+
+        [DataTestMethod]
+        [DataRow("CanConvertQuantity(5 'mg', 'g')", true)]
+        [DataRow("CanConvertQuantity(5 'mg', 'cm')", false)]
+        public void CanConvertQuantity_By_Unit_Name(string cql, bool expected)
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(cql);
+            var expression = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<CanConvertQuantity>();
+            expression.resultTypeSpecifier.Should().Be(SystemTypes.BooleanType);
+            Run(expression, library).Should().Be(expected);
+        }
+
+        [TestMethod]
+        public void GeometricMean_Of_Decimals()
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression("GeometricMean({ 1.0, 4.0, 16.0 })");
+            var expression = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<GeometricMean>();
+            expression.resultTypeSpecifier.Should().Be(SystemTypes.DecimalType);
+            Run(expression, library).Should().Be(4.0m);
+        }
+
+        [DataTestMethod]
+        [DataRow("ToLong('42')", 42L)]
+        [DataRow("ToLong(true)", 1L)]
+        [DataRow("ToLong(42)", 42L)]
+        public void ToLong_Overloads(string cql, long expected)
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(cql);
+            var expression = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<ToLong>();
+            expression.resultTypeSpecifier.Should().Be(SystemTypes.LongType);
+            Run(expression, library).Should().Be(expected);
+        }
     }
 }

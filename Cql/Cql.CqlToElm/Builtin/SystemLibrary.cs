@@ -171,11 +171,26 @@ namespace Hl7.Cql.CqlToElm.Builtin
                     .For(T, IntegerType, LongType, DecimalType, QuantityType, DateType, DateTimeType, TimeType));
         public static SystemFunction<Combine> Combine = nary<Combine>(new TypeSpecifier[] { StringType.ToListType(), StringType }, 1, StringType);
         public static SystemFunction<Concatenate> Concatenate = binary<Concatenate>(StringType, StringType, StringType);
+        // CanConvertQuantity(argument Quantity, unit String) Boolean and the ConvertsToX(argument Any)
+        // Boolean family are CQL 1.5 operators; the runtime implements every one of them and the
+        // ELM model carries their nodes, but nothing declared them here, so a library using one
+        // failed with "Could not resolve call to operator ConvertsToInteger with signature (String)".
+        public static SystemFunction<CanConvertQuantity> CanConvertQuantity = binary<CanConvertQuantity>(QuantityType, StringType, BooleanType);
         public static OverloadedFunctionDef Contains = OverloadedFunctionDef.Create(binary<Contains>(T.ToListType(), T, BooleanType), binary<Contains>(T.ToIntervalType(), T, BooleanType));
         public static SystemFunction<Count> Count = aggregate<Count>(T, IntegerType);
         public static SystemFunction<Date> Date = nary<Date>(IntegerType, 3, 1, DateType);
         public static SystemFunction<DateFrom> DateFrom = unary<DateFrom>(DateTimeType, DateType);
         public static SystemFunction<Elm.DateTime> DateTime = nary<Elm.DateTime>(new[] { IntegerType, IntegerType, IntegerType, IntegerType, IntegerType, IntegerType, IntegerType, DecimalType }, 1, DateTimeType);
+        public static SystemFunction<ConvertQuantity> ConvertQuantity = binary<ConvertQuantity>(QuantityType, StringType, QuantityType);
+        public static SystemFunction<ConvertsToBoolean> ConvertsToBoolean = unary<ConvertsToBoolean>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToDate> ConvertsToDate = unary<ConvertsToDate>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToDateTime> ConvertsToDateTime = unary<ConvertsToDateTime>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToDecimal> ConvertsToDecimal = unary<ConvertsToDecimal>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToInteger> ConvertsToInteger = unary<ConvertsToInteger>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToLong> ConvertsToLong = unary<ConvertsToLong>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToQuantity> ConvertsToQuantity = unary<ConvertsToQuantity>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToString> ConvertsToString = unary<ConvertsToString>(AnyType, BooleanType);
+        public static SystemFunction<ConvertsToTime> ConvertsToTime = unary<ConvertsToTime>(AnyType, BooleanType);
         public static SystemFunction<Descendents> Descendants = unary<Descendents>(AnyType, AnyType, "descendents").MakeFluent(); // this is always called like <any>.descendents()
         public static OverloadedFunctionDef DifferenceBetween = binaryWithPrecision<DifferenceBetween>(T, T, IntegerType)
             .ValidateWith(Validators.Validate)
@@ -214,9 +229,13 @@ namespace Hl7.Cql.CqlToElm.Builtin
             binary<Includes>(T.ToListType(), T.ToListType(), BooleanType),
             binaryWithPrecision<Contains>(T.ToIntervalType(), T, BooleanType, nameof(Elm.Includes)),
             binaryWithPrecision<Includes>(T.ToIntervalType(), T.ToIntervalType(), BooleanType));
+        // GeometricMean(argument List<Decimal>) Decimal: a CQL 1.5 aggregate the runtime implements.
+        public static SystemFunction<GeometricMean> GeometricMean = aggregate<GeometricMean>(DecimalType, DecimalType);
         public static SystemFunction<Indexer> Indexer = binary<Indexer>(StringType, IntegerType, StringType);
         public static SystemFunction<IndexOf> IndexOf = binary<IndexOf>(T.ToListType(), T, IntegerType);
-        public static SystemFunction<ToLong> IntegerToLong = unary<ToLong>(IntegerType, LongType);
+        // ToLong(argument Boolean | Integer | String) Long. Only the Integer overload was declared;
+        // the runtime converts all three.
+        public static OverloadedFunctionDef ToLong = unary<ToLong>(T, LongType).For(T, BooleanType, IntegerType, StringType);
         public static OverloadedFunctionDef Intersect = binary<Intersect>(T.ToIntervalType(), T.ToIntervalType(), T.ToIntervalType()).For(T, IntervalPointTypes.ToArray())
             .Combine(binary<Intersect>(T.ToListType(), T.ToListType(), T.ToListType()));
         public static OverloadedFunctionDef Interval = nary<Interval>(new TypeSpecifier[] { T, T, BooleanType, BooleanType, }, 4, T.ToIntervalType())
