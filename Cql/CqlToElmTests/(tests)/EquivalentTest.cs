@@ -1556,5 +1556,108 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         #endregion
+
+        #region Tuple
+
+        // The signature of equivalent is ~<T>(left T, right T) Boolean, so both operands must
+        // resolve to a single type T. Appendix B says two tuple values are equivalent "if and only
+        // if the tuples are of the same type, and the values for all elements by name are
+        // equivalent", and the Developer's Guide defines tuple subtyping as requiring both the same
+        // number of elements and, for every element, a same-named element in the other type. A
+        // tuple type whose element names differ from the other operand's therefore has no
+        // conversion path to it, and the invocation cannot be resolved.
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_IdenticalTuple()
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Id: 1, Name: 'John' }");
+            var equal = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Equivalent>();
+            AssertResult(equal, true);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_IdenticalTupleWithDifferentValues()
+        {
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Id: 2, Name: 'Jane' }");
+            var equal = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Equivalent>();
+            AssertResult(equal, false);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_TupleWithElementsInDifferentOrder()
+        {
+            // Tuple element order is not part of the type: the two operands name the same elements
+            // with the same types, so they are the same tuple type.
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Name: 'John', Id: 1 }");
+            var equal = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Equivalent>();
+            AssertResult(equal, true);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_TupleWithSubtypeElementType()
+        {
+            // Tuple { Id Integer, Name String } is a subtype of Tuple { Id Any, Name String }:
+            // same element names, and each element type is a subtype of its counterpart.
+            var library = CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Id: null, Name: 'John' }");
+            var equal = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Equivalent>();
+            AssertResult(equal, false);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_TupleWithExtraElement_IsNotResolved()
+        {
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John', Position: 'Manager' } ~ Tuple { Id: 1, Name: 'John' }",
+                ["Could not resolve call to operator Equivalent with signature (Tuple { Id Integer, Name String, Position String }, Tuple { Id Integer, Name String })."]);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_TupleWithMissingElement_IsNotResolved()
+        {
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Id: 1, Name: 'John', Position: 'Manager' }",
+                ["Could not resolve call to operator Equivalent with signature (Tuple { Id Integer, Name String }, Tuple { Id Integer, Name String, Position String })."]);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_TupleWithDifferentElementName_IsNotResolved()
+        {
+            // Same number of elements, but 'Name' has no counterpart in the right operand.
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1, Name: 'John' } ~ Tuple { Id: 1, Position: 'Manager' }",
+                ["Could not resolve call to operator Equivalent with signature (Tuple { Id Integer, Name String }, Tuple { Id Integer, Position String })."]);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_NestedTupleWithExtraElement_IsNotResolved()
+        {
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Inner: Tuple { Id: 1 } } ~ Tuple { Inner: Tuple { Id: 1, Name: 'John' } }",
+                ["Could not resolve call to operator Equivalent with signature (Tuple { Inner Tuple { Id Integer } }, Tuple { Inner Tuple { Id Integer, Name String } })."]);
+        }
+
+        [TestMethod]
+        public void Tuple_EquivalentTo_NonTuple_IsNotResolved()
+        {
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "Tuple { Id: 1 } ~ 1",
+                ["Could not resolve call to operator Equivalent with signature (Tuple { Id Integer }, Integer)."]);
+        }
+
+        [TestMethod]
+        public void ListOfTuple_EquivalentTo_ListOfTupleWithExtraElement_IsNotResolved()
+        {
+            // The element types of the two lists are disparate tuple types, so the lists themselves
+            // have no common type either.
+            CreateCqlToolkit().MakeLibraryFromExpression(
+                "{ Tuple { Id: 1 } } ~ { Tuple { Id: 1, Name: 'John' } }",
+                ["Could not resolve call to operator Equivalent with signature (List<Tuple { Id Integer }>, List<Tuple { Id Integer, Name String }>)."]);
+        }
+
+        #endregion
     }
 }
