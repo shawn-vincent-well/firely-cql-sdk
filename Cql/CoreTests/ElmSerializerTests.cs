@@ -14,6 +14,7 @@ using Hl7.Cql.Elm.Serialization;
 using Hl7.Fhir.Model;
 using Annotation = Hl7.Cql.Elm.Annotation;
 using Library = Hl7.Cql.Elm.Library;
+using Quantity = Hl7.Cql.Elm.Quantity;
 
 namespace CoreTests
 {
@@ -301,6 +302,41 @@ namespace CoreTests
             // When fluentSpecified is true, the value should be serialized
             json.Should().Contain("\"fluent\"");
             json.Should().Contain("true");
+        }
+
+        /// <summary>
+        /// A property paired with an <c>xxxSpecified</c> flag is optional in the ELM schema, so "absent"
+        /// and "present, and equal to the CLR default" are different statements about the ELM and only
+        /// the flag can tell them apart. The flag therefore decides on its own, and is not also subjected
+        /// to the general "omit values equal to the type default" rule.
+        /// </summary>
+        [TestMethod]
+        public void SpecifiedPattern_DefaultValue_StillSerializedWhenSpecified()
+        {
+            var functionDef = new FunctionDef
+            {
+                name = "test",
+                fluent = false, fluentSpecified = true
+            };
+            var quantity = new Quantity { value = 0m, valueSpecified = true, unit = "cm" };
+            var lib = new Library
+            {
+                statements = [functionDef],
+                parameters = [new ParameterDef { name = "p", @default = quantity }]
+            };
+
+            var json = lib.SerializeToJson();
+
+            var parsedLib = Library.ParseFromJson(json, validate: false);
+
+            var parsedFd = parsedLib.statements[0].Should().BeOfType<FunctionDef>().Subject;
+            parsedFd.fluent.Should().BeFalse();
+            parsedFd.fluentSpecified.Should().BeTrue("an explicit false must survive the round trip as a false, not as an absence");
+
+            var parsedQuantity = parsedLib.parameters[0].@default.Should().BeOfType<Quantity>().Subject;
+            parsedQuantity.value.Should().Be(0m);
+            parsedQuantity.valueSpecified.Should().BeTrue("an explicit zero must survive the round trip as a zero, not as an absence");
+            parsedQuantity.unit.Should().Be("cm");
         }
 
         [TestMethod]

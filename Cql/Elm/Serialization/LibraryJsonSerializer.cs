@@ -271,6 +271,10 @@ internal static class LibraryJsonSerializer
                 node is JsonObject { Count: 0 } or JsonArray { Count: 0 };
         }
 
+    /// <remarks>
+    /// Must be chained after <see cref="DoNotSerializeDefaultValues"/>: it replaces the ShouldSerialize
+    /// that modifier installs on any property paired with an <c>xxxSpecified</c> flag.
+    /// </remarks>
     private static void HandleSpecifiedProperties(JsonTypeInfo ti)
     {
         var specifiedProps = ti.Properties.SelectMany(getSpecifiedProperty);
@@ -287,9 +291,13 @@ internal static class LibraryJsonSerializer
                 prop.ValuePropSpecified.Set?.Invoke(obj, true);
             };
 
-            // Only serialize the property if xxxSpecified is true.
-            // Preserve the existing ShouldSerialize logic (e.g., from DoNotSerializeDefaultValues).
-            var existingShouldSerialize = prop.ValueProp.ShouldSerialize;
+            // Serialize the property if and only if xxxSpecified is true. The flag is the authority on
+            // presence here, and it deliberately overrides the default-value omission applied by
+            // DoNotSerializeDefaultValues: for a property that carries an explicit "is it there" flag,
+            // "absent" and "present, and equal to the CLR default" are different statements, and only
+            // the flag can tell them apart. Deferring to the default-value rule collapsed the two and
+            // dropped e.g. a Quantity of 0 or an explicit false, which a consumer then reads as no value
+            // at all.
             prop.ValueProp.ShouldSerialize = (obj, value) =>
             {
                 var shouldSerialize = (bool?)prop.ValuePropSpecified.Get?.Invoke(obj) == true;
@@ -297,11 +305,8 @@ internal static class LibraryJsonSerializer
                     Debug.Fail($"Property '{prop.ValueProp.Name}' is set to '{value}', but " +
                                $"the '{prop.ValuePropSpecified.Name}' is false.");
 
-                // If the specified flag is false, don't serialize
-                if (!shouldSerialize) return false;
-
-                // Otherwise, defer to the existing ShouldSerialize logic
-                return existingShouldSerialize?.Invoke(obj, value) ?? true;
+                // A null has nothing to write regardless of what the flag claims.
+                return shouldSerialize && value is not null;
             };
 
             // The xxxSpecified prop should never be serialized itself.
