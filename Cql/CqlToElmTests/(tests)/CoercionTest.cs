@@ -311,6 +311,51 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         [TestMethod]
+        public void IntervalCoercionReadsClosednessFromTheSource()
+        {
+            // The closedness of an interval that has a value at run time must keep coming from that
+            // value, so that it stays consistent with the boundaries, which are read off it too.
+            var expression = Interval(Integer(1), Integer(2));
+
+            var result = CoercionProvider.Coerce(expression, SystemTypes.DecimalType.ToIntervalType());
+
+            result.Success.Should().BeTrue();
+            var coerced = result.Result.Should().BeOfType<Interval>().Subject;
+            coerced.lowClosedExpression.Should().BeOfType<Property>().Which.path.Should().Be("lowClosed");
+            coerced.highClosedExpression.Should().BeOfType<Property>().Which.path.Should().Be("highClosed");
+        }
+
+        [TestMethod]
+        public void NullBoundedIntervalCoercionCarriesClosednessAsAnAttribute()
+        {
+            // An interval selector with two null boundaries denotes a null interval, so there is no
+            // value to read a property off. Lowering its closedness to a property read against itself
+            // therefore yields null, and because ELM gives the expression form precedence over the
+            // attribute form, that null is what a consumer has to use.
+            var library = CreateCqlToolkit(AllowNullIntervals: true)
+                .MakeLibraryFromExpression("Interval(null, null) overlaps Interval[1, 10]");
+            var overlaps = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Overlaps>();
+            var coerced = overlaps.operand[0].Should().BeOfType<Interval>().Subject;
+
+            coerced.lowClosedExpression.Should().BeNull();
+            coerced.highClosedExpression.Should().BeNull();
+            coerced.lowClosed.Should().BeFalse();
+            coerced.highClosed.Should().BeFalse();
+
+            // The assertions above read the in-memory tree. Round-trip the emitted ELM through the
+            // reader as well, so the closedness is checked as it is actually published, not only as
+            // it is built.
+            var reread = Library.ParseFromJson(library.SerializeToJson());
+            var rereadOverlaps = reread.statements.Should().ContainSingle()
+                                       .Which.expression.Should().BeOfType<Overlaps>().Subject;
+            var rereadCoerced = rereadOverlaps.operand[0].Should().BeOfType<Interval>().Subject;
+            rereadCoerced.lowClosedExpression.Should().BeNull();
+            rereadCoerced.highClosedExpression.Should().BeNull();
+            rereadCoerced.lowClosed.Should().BeFalse();
+            rereadCoerced.highClosed.Should().BeFalse();
+        }
+
+        [TestMethod]
         public void ValueSetToListCode()
         {
             var expression = ValueSet();

@@ -218,16 +218,48 @@ namespace Hl7.Cql.CqlToElm
             Expression ChangeIntervalType(Expression expression, IntervalTypeSpecifier fromInterval, IntervalTypeSpecifier toInterval)
             {
                 var low = new Property { source = expression, path = "low" }.WithResultType(fromInterval.pointType);
-                var lowClosed = new Property { source = expression, path = "lowClosed" }.WithResultType(SystemTypes.BooleanType);
                 var high = new Property { source = expression, path = "high" }.WithResultType(fromInterval.pointType);
-                var highClosed = new Property { source = expression, path = "highClosed" }.WithResultType(SystemTypes.BooleanType);
                 var interval = new Elm.Interval
                 {
                     low = Coerce(low, toInterval.pointType).Result,
                     high = Coerce(high, toInterval.pointType).Result,
-                    lowClosedExpression = lowClosed,
-                    highClosedExpression = highClosed
                 }.WithResultType(toInterval);
+
+                // ELM carries interval closedness either as the lowClosed/highClosed attributes or as the
+                // lowClosedExpression/highClosedExpression elements, and where both are present the
+                // expression form takes precedence. Reading the closedness off the source expression is the
+                // correct lowering in general: the source's closedness is only known at run time, and for an
+                // interval selector it is the value the selector produces - not its written boundaries - that
+                // the coerced boundaries above are taken from, so the closedness has to come from the same
+                // place to stay consistent with them.
+                //
+                // An interval selector whose boundaries are both null is the exception. Such a selector
+                // denotes a null interval, so there is no value to read a property from and the property
+                // reads can only evaluate to null, leaving the coerced interval with no usable closedness at
+                // all. That selector's closedness is fixed at translation time by its own brackets, so carry
+                // it across as the attributes instead.
+                if (expression is Elm.Interval { low: Null, high: Null } nullBoundedSelector)
+                {
+                    // A selector can still state its closedness as an expression rather than a literal; that
+                    // expression stands on its own and can be reused as-is.
+                    if (nullBoundedSelector.lowClosedExpression is not null)
+                        interval.lowClosedExpression = nullBoundedSelector.lowClosedExpression;
+                    else
+                        interval.lowClosed = nullBoundedSelector.lowClosed;
+
+                    if (nullBoundedSelector.highClosedExpression is not null)
+                        interval.highClosedExpression = nullBoundedSelector.highClosedExpression;
+                    else
+                        interval.highClosed = nullBoundedSelector.highClosed;
+                }
+                else
+                {
+                    interval.lowClosedExpression =
+                        new Property { source = expression, path = "lowClosed" }.WithResultType(SystemTypes.BooleanType);
+                    interval.highClosedExpression =
+                        new Property { source = expression, path = "highClosed" }.WithResultType(SystemTypes.BooleanType);
+                }
+
                 return interval;
             }
         }
