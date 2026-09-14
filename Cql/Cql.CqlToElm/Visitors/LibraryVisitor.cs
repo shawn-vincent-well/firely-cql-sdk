@@ -35,7 +35,7 @@ namespace Hl7.Cql.CqlToElm.Visitors
                 return null;
 
             return ModelProvider.TryGetModelFromUri(systemUri, out var model, systemVersion) ?
-                new UsingDefSymbol("System", systemVersion, model)
+                new UsingDefSymbol("System", systemVersion, model) { IsImplicit = true }
                 : null;
         }
 

@@ -29,6 +29,16 @@ namespace Hl7.Cql.CqlToElm
 
         public Model.ModelInfo Model { get; }
 
+        /// <summary>
+        /// True for the System model the translator declares on every library's behalf, false for
+        /// a model the library declares itself with a <c>using</c>. The distinction decides type
+        /// resolution: the specification states that an implicit System declaration "is not
+        /// considered as part of determining ambiguity", so a bare <c>Quantity</c> in a library
+        /// that declares only FHIR is FHIR.Quantity, while the same name in a library that also
+        /// writes <c>using System</c> is ambiguous.
+        /// </summary>
+        public bool IsImplicit { get; init; }
+
         public Expression ToRef(string? _) => new UsingRef(this);
     }
 

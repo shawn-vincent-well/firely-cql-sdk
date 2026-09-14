@@ -49,6 +49,16 @@ namespace Hl7.Cql.CqlToElm.Scopes
                 else
                     symbol = OverloadedFunctionDef.Create(function);
             }
+            // A library that writes `using System` itself replaces the declaration the translator
+            // made on its behalf. The name is the same; what changes is that the declaration is now
+            // explicit, which is what type resolution asks a UsingDefSymbol about.
+            if (symbol is UsingDefSymbol { IsImplicit: false }
+                && LocalSymbols.TryGetValue(symbol.Name, out var current)
+                && current is UsingDefSymbol { IsImplicit: true })
+            {
+                LocalSymbols[symbol.Name] = symbol;
+                return true;
+            }
             return LocalSymbols.TryAdd(symbol.Name, symbol);
         }
 

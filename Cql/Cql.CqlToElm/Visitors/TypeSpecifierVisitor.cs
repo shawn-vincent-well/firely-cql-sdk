@@ -152,6 +152,19 @@ namespace Hl7.Cql.CqlToElm.Visitors
         {
             var matches = usingDefs.Select(include => (include, modelType: GetModelType(include, typeName)))
                     .Where(r => r.modelType is not null).ToList();
+            // "When the System model declaration is implicit, it is not considered as part of
+            // determining ambiguity" (Developer's Guide, Multiple Data Models): a library that
+            // declares only FHIR means FHIR.Quantity by `Quantity`. Only when the library ALSO
+            // writes `using System` are the two on equal footing, and the ambiguity handling below
+            // -- and the AmbiguousTypeBehavior option that tunes it -- applies.
+            // PreferSystem is the one setting that asks for the opposite -- the System type even
+            // where a declared model has the name -- and keeps its documented meaning.
+            if (matches.Count > 1 && (CqlToElmOptions.AmbiguousTypeBehavior ?? AmbiguousTypeBehavior.Error) != AmbiguousTypeBehavior.PreferSystem)
+            {
+                var declared = matches.Where(m => !m.include.IsImplicit).ToList();
+                if (declared.Count == 1)
+                    matches = declared;
+            }
             if (matches.Count == 1)
             {
                 result = matches[0].modelType!;

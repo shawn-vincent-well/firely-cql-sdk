@@ -197,8 +197,12 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         [TestMethod]
-        public void Using_Duplicate_System_NoLocalAlias()
+        public void Using_Explicit_System_NoLocalAlias()
         {
+            // A library may declare System itself; the declaration the translator made on its
+            // behalf is replaced, not duplicated. The specification speaks of "when the System model
+            // declaration is implicit", which presupposes that it need not be -- and whether it is
+            // decides how an unqualified type name shared with another model resolves.
             var modelInfo = new Model.ModelInfo
             {
                 name = "System",
@@ -211,7 +215,7 @@ namespace Hl7.Cql.CqlToElm.Test
                 library UsingTest version '1.0.0'
 
                 using System version '1.0.0'
-                """, expectedErrors: ["Duplicate identifier System in scope."]);
+                """);
 
             Assert.IsNotNull(library.usings);
             Assert.AreEqual(1, library.usings.Length);
