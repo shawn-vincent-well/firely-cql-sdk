@@ -326,33 +326,39 @@ namespace Hl7.Cql.CqlToElm.Test
         }
 
         [TestMethod]
-        public void NullBoundedIntervalCoercionCarriesClosednessAsAnAttribute()
+        public void NullBoundedIntervalCoercionIsANullInterval()
         {
-            // An interval selector with two null boundaries denotes a null interval, so there is no
-            // value to read a property off. Lowering its closedness to a property read against itself
-            // therefore yields null, and because ELM gives the expression form precedence over the
-            // attribute form, that null is what a consumer has to use.
+            // An interval selector with two null boundaries denotes a null interval: with no point
+            // type there is no range for either boundary to stand for. Coercing it to Interval<Integer>
+            // must therefore yield a null Interval<Integer>. Rebuilding it as an interval with two null
+            // boundaries would not: the specification reads a closed null boundary as the beginning or
+            // end of the point type's range, so the rebuilt interval would span the whole of Integer.
             var library = CreateCqlToolkit(AllowNullIntervals: true)
                 .MakeLibraryFromExpression("Interval(null, null) overlaps Interval[1, 10]");
             var overlaps = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Overlaps>();
-            var coerced = overlaps.operand[0].Should().BeOfType<Interval>().Subject;
-
-            coerced.lowClosedExpression.Should().BeNull();
-            coerced.highClosedExpression.Should().BeNull();
-            coerced.lowClosed.Should().BeFalse();
-            coerced.highClosed.Should().BeFalse();
+            var coerced = overlaps.operand[0].Should().BeOfType<Null>().Subject;
+            var type = coerced.resultTypeSpecifier.Should().BeOfType<IntervalTypeSpecifier>().Subject;
+            type.pointType.Should().Be(SystemTypes.IntegerType);
 
             // The assertions above read the in-memory tree. Round-trip the emitted ELM through the
-            // reader as well, so the closedness is checked as it is actually published, not only as
-            // it is built.
+            // reader as well, so the shape is checked as it is actually published, not only as it is
+            // built.
             var reread = Library.ParseFromJson(library.SerializeToJson());
             var rereadOverlaps = reread.statements.Should().ContainSingle()
                                        .Which.expression.Should().BeOfType<Overlaps>().Subject;
-            var rereadCoerced = rereadOverlaps.operand[0].Should().BeOfType<Interval>().Subject;
-            rereadCoerced.lowClosedExpression.Should().BeNull();
-            rereadCoerced.highClosedExpression.Should().BeNull();
-            rereadCoerced.lowClosed.Should().BeFalse();
-            rereadCoerced.highClosed.Should().BeFalse();
+            rereadOverlaps.operand[0].Should().BeOfType<Null>();
+        }
+
+        [TestMethod]
+        public void TypedNullBoundedIntervalCoercionStaysAnInterval()
+        {
+            // `Interval[null as Integer, null as Integer]` is not a null interval: its boundaries are
+            // casts, it has a point type, and per the specification it spans the whole of Integer.
+            // Coercing it to Interval<Decimal> must keep it an interval.
+            var library = CreateCqlToolkit()
+                .MakeLibraryFromExpression("Interval[null as Integer, null as Integer] overlaps Interval[1.0, 10.0]");
+            var overlaps = library.Should().BeACorrectlyInitializedLibraryWithStatementOfType<Overlaps>();
+            overlaps.operand[0].Should().BeOfType<Interval>();
         }
 
         [TestMethod]

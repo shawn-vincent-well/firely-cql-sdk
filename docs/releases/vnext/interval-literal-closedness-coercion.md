@@ -2,15 +2,15 @@
 
 - **CQL-to-ELM translator:** coercing the point type of an interval selector whose boundaries are
   both `null` — for example the `Interval(null, null)` in `Interval(null, null) overlaps
-  Interval[1, 10]` — no longer produces an interval whose closedness cannot be evaluated. Coercion
-  rebuilds the interval and lowered its closedness to `lowClosedExpression` / `highClosedExpression`
-  property reads against the source expression. That is the right lowering when the source has a
-  value to read from, but a selector with two null boundaries denotes a null interval, so the
-  property reads could only evaluate to null — and because ELM gives the expression form precedence
-  over the `lowClosed` / `highClosed` attributes, that null is what a consumer had to use, even
-  though the selector's own brackets fix its closedness at translation time. Coercion now carries
-  that closedness across as the attributes for this case. Intervals whose closedness is only known
-  at run time are unaffected and still read it from the source expression, which keeps it consistent
-  with the boundaries, read from the same value. **CQL evaluation results change:** an expression
-  coercing the point type of a null-bounded interval selector previously offered its consumer a null
-  closedness and now offers the declared one.
+  Interval[1, 10]` — now emits a `Null` typed as the target interval type. Such a selector denotes a
+  null interval: it has no point type, so there is no range for either boundary to stand for, and
+  coercing a null interval yields a null interval. Coercion previously rebuilt it as an interval
+  whose boundaries and closedness were property reads against the selector itself, a shape that
+  evaluates only by null propagation through the closedness expressions; carrying the selector's
+  closedness across as attributes instead, which was the first version of this fix, would have been
+  worse, because the specification reads a closed null boundary as the beginning or end of the point
+  type's range, so a null interval would have quietly become one spanning the whole of the target
+  type. `Interval[null as T, null as T]` is unaffected: its boundaries are casts rather than nulls,
+  it has a point type, and it spans the whole of `T` as the specification says. **CQL evaluation
+  results change** for consumers that did not already propagate the null closedness: an expression
+  coercing a null-bounded interval selector is now null rather than unbounded.
