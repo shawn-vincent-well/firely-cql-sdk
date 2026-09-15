@@ -1,0 +1,100 @@
+name: Nexus release
+
+# Builds and publishes the fork's packages. Runs ONLY on a release tag of the form vX.Y.Z-nexus.N,
+# where X.Y.Z is the upstream base version the series sits on and N counts our releases on it.
+# Nothing else builds packages; a laptop pack is never published.
+#
+# Upstream's own CI is Azure Pipelines (build/); it does not run here. Upstream strong-names its
+# assemblies with a public key only (delay-signed) and never completes the signature, so a pack
+# without their private key produces the same assembly identity upstream ships.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-nexus.[0-9]+"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  # The CQL and ELM tooling projects pull Java and code generators the packages do not need.
+  BUILD_PROPS: -p:CqlToolingEnabled=false -p:ElmToolingEnabled=false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the register and the version guard read tags and history
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Derive the version from the tag and check it against the props
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/v}"                 # 2.14.0-nexus.1
+          base="${tag%%-nexus.*}"                         # 2.14.0
+          suffix="nexus.${tag##*-nexus.}"                 # nexus.1
+          prefix="$(sed -n 's:.*<VersionPrefix>\([^<]*\)</VersionPrefix>.*:\1:p' cql-sdk.props | head -1)"
+          if [ "$prefix" != "$base" ]; then
+            echo "::error::tag says base $base but cql-sdk.props says VersionPrefix $prefix. Rebase the series onto v$base or fix the tag."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "v$base" HEAD; then
+            echo "::error::upstream tag v$base is not an ancestor of this commit; the series is not on the base it claims."
+            exit 1
+          fi
+          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: The register must match the series
+        run: |
+          set -euo pipefail
+          nexus/gen-patches.sh
+          if ! git diff --exit-code -- PATCHES.md; then
+            echo "::error::PATCHES.md is stale. Run nexus/gen-patches.sh and commit the result."
+            exit 1
+          fi
+
+      - name: Build
+        run: dotnet build Cql/Cql.CqlToElm -c Release $BUILD_PROPS
+
+      - name: Test (translator)
+        run: dotnet test Cql/CqlToElmTests -c Release $BUILD_PROPS
+
+      - name: Test (core)
+        run: dotnet test Cql/CoreTests -c Release $BUILD_PROPS
+
+      - name: Pack the whole chain
+        # All eight, at one suffix. The fixes live in Elm, Iso8601, Runtime and CqlToElm; a lone
+        # CqlToElm package over released dependencies would carry only some of them.
+        run: |
+          set -euo pipefail
+          for p in Iso8601 Cql.Grammar Cql.Abstractions Cql.Runtime Cql.Model Cql.Firely Elm Cql.CqlToElm; do
+            dotnet pack "Cql/$p" -c Release $BUILD_PROPS -p:VersionSuffix=${{ steps.version.outputs.suffix }} -o nupkgs
+          done
+          ls -1 nupkgs/*.nupkg
+          test "$(ls -1 nupkgs/*.nupkg | wc -l)" -eq 8
+
+      - name: Publish
+        # No --skip-duplicate: this version is hand-chosen, and a re-tag that forgot to bump N must
+        # fail here rather than leave consumers on a package that silently did not change.
+        run: |
+          set -euo pipefail
+          for f in nupkgs/*.nupkg; do
+            dotnet nuget push "$f" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs-${{ steps.version.outputs.version }}
+          path: nupkgs/

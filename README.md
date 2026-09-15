@@ -1,3 +1,19 @@
+> **This is the Nexus EMR fork of the Firely CQL SDK.** It is upstream
+> [FirelyTeam/firely-cql-sdk](https://github.com/FirelyTeam/firely-cql-sdk) at a released tag plus a
+> short series of fixes to the CQL-to-ELM translator, each of which is sent upstream.
+> [PATCHES.md](PATCHES.md) lists every carried commit and its upstream status.
+>
+> - `nexus/main` is the series: upstream tag, one housekeeping commit, one commit per fix. It is rebased
+>   onto every upstream release and force-pushed, so base no long-lived work on it.
+> - `develop` mirrors upstream and is never committed to. Do not use GitHub's "Sync fork" button;
+>   it would merge upstream `develop` into the series.
+> - Packages are built only by the release workflow, on tags `vX.Y.Z-nexus.N`, and keep upstream's
+>   package ids with the `-nexus.N` prerelease suffix. Nothing is built or published by hand.
+> - Pull requests against upstream are staged on `nexus/fix-<slug>` branches. When opening a pull
+>   request from a clone, check its base repository first: GitHub defaults it to upstream.
+>
+> Everything below this line is upstream's README, unchanged.
+
 [![Build Status](https://dev.azure.com/firely/firely-net-sdk/_apis/build/status%2FFirelyTeam.firely-cql-sdk?repoName=FirelyTeam%2Ffirely-cql-sdk&branchName=develop)](https://dev.azure.com/firely/firely-net-sdk/_build/latest?definitionId=143&repoName=FirelyTeam%2Ffirely-cql-sdk&branchName=develop)
 
 ## Introduction
